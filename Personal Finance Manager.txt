@@ -1,0 +1,265 @@
+#include <iostream>
+#include <unordered_map>
+#include <stack>
+#include <vector>
+#include <fstream>
+#include <iomanip>
+#include <queue>
+#include <algorithm>
+#include <cmath>
+
+using namespace std;
+
+const int ENCRYPTION_KEY = 5;
+
+struct Transaction {
+    string category;
+    double amount;
+    string date;
+};
+
+string encrypt(const string& data) {
+    string encrypted = data;
+    for (char &c : encrypted) c += ENCRYPTION_KEY;
+    return encrypted;
+}
+
+string decrypt(const string& data) {
+    string decrypted = data;
+    for (char &c : decrypted) c -= ENCRYPTION_KEY;
+    return decrypted;
+}
+
+struct TreeNode {
+    Transaction transaction;
+    TreeNode* left;
+    TreeNode* right;
+    TreeNode(Transaction trans) : transaction(trans), left(nullptr), right(nullptr) {}
+};
+
+class TransactionBST {
+    TreeNode* root;
+    void inOrder(TreeNode* node) const {
+        if (node) {
+            inOrder(node->left);
+            cout << "Transaction - " << node->transaction.category << ": $" << node->transaction.amount 
+                 << " on " << node->transaction.date << endl;
+            inOrder(node->right);
+        }
+    }
+
+public:
+    TransactionBST() : root(nullptr) {}
+
+    void insert(const Transaction& transaction) {
+        root = insertHelper(root, transaction);
+    }
+
+    void displaySorted() const {
+        cout << "\n--- Sorted Transactions ---" << endl;
+        inOrder(root);
+    }
+
+private:
+    TreeNode* insertHelper(TreeNode* node, const Transaction& transaction) {
+        if (!node) return new TreeNode(transaction);
+        if (transaction.amount < node->transaction.amount)
+            node->left = insertHelper(node->left, transaction);
+        else
+            node->right = insertHelper(node->right, transaction);
+        return node;
+    }
+};
+
+class AlertManager {
+    priority_queue<pair<double, string>> alerts;
+
+public:
+    void addAlert(double amount, const string& category) {
+        alerts.push({amount, category});
+    }
+
+    void showAlerts() {
+        cout << "\n--- Budget Alerts ---" << endl;
+        while (!alerts.empty()) {
+            auto [amount, category] = alerts.top();
+            cout << "Alert: Spent $" << amount << " on " << category << endl;
+            alerts.pop();
+        }
+    }
+};
+
+class PersonalFinanceManager {
+    unordered_map<string, vector<Transaction>> transactions;
+    stack<Transaction> recentTransactions;
+    TransactionBST transactionBST;
+    AlertManager alertManager;
+    double budgetLimit;
+
+public:
+    PersonalFinanceManager() : budgetLimit(0.0) {}
+
+    void setBudgetLimit(double limit) {
+        budgetLimit = limit;
+        cout << "Budget limit set to $" << budgetLimit << endl;
+    }
+
+    void addTransaction(const string& category, double amount, const string& date) {
+        Transaction newTransaction = {category, amount, date};
+        transactions[category].push_back(newTransaction);
+        recentTransactions.push(newTransaction);
+        transactionBST.insert(newTransaction);
+        if (amount > budgetLimit * 0.2) {
+            alertManager.addAlert(amount, category);
+        }
+        cout << "Transaction added: $" << amount << " in " << category << " on " << date << endl;
+    }
+
+    void undoTransaction() {
+        if (!recentTransactions.empty()) {
+            Transaction lastTransaction = recentTransactions.top();
+            recentTransactions.pop();
+            transactions[lastTransaction.category].pop_back();
+            cout << "Undo: Removed transaction of $" << lastTransaction.amount 
+                 << " in " << lastTransaction.category << " on " << lastTransaction.date << endl;
+        } else {
+            cout << "No recent transactions to undo!" << endl;
+        }
+    }
+
+    void viewSummary() {
+        double totalSpent = 0.0;
+        cout << "\n--- Expense Summary ---\n";
+        for (const auto& [category, transList] : transactions) {
+            double categoryTotal = 0.0;
+            for (const auto& transaction : transList) {
+                categoryTotal += transaction.amount;
+            }
+            totalSpent += categoryTotal;
+            cout << "Category: " << category << ", Total Spent: $" << fixed << setprecision(2) << categoryTotal << endl;
+        }
+        cout << "Total Spending: $" << fixed << setprecision(2) << totalSpent << endl;
+
+        if (totalSpent > budgetLimit) {
+            cout << "Warning: You have exceeded your budget limit of $" << budgetLimit << "!" << endl;
+        }
+    }
+
+    void saveToFile(const string& filename) {
+        ofstream outFile(filename);
+        if (!outFile) {
+            cerr << "Error: Could not open file for saving transactions." << endl;
+            return;
+        }
+        for (const auto& [category, transList] : transactions) {
+            for (const auto& transaction : transList) {
+                outFile << encrypt(transaction.category) << ","
+                        << encrypt(to_string(transaction.amount)) << ","
+                        << encrypt(transaction.date) << endl;
+            }
+        }
+        outFile.close();
+        cout << "Transactions saved to " << filename << endl;
+    }
+
+    void loadFromFile(const string& filename) {
+        ifstream inFile(filename);
+        if (!inFile) {
+            cerr << "Error: Could not open file for loading transactions." << endl;
+            return;
+        }
+        string category, date, amountStr;
+        while (getline(inFile, category, ',') &&
+               getline(inFile, amountStr, ',') &&
+               getline(inFile, date)) {
+            Transaction transaction = {decrypt(category), stod(decrypt(amountStr)), decrypt(date)};
+            addTransaction(transaction.category, transaction.amount, transaction.date);
+        }
+        inFile.close();
+        cout << "Transactions loaded from " << filename << endl;
+    }
+
+    void displaySortedTransactions() {
+        transactionBST.displaySorted();
+    }
+
+    void displayAlerts() {
+        alertManager.showAlerts();
+    }
+};
+
+int main() {
+    PersonalFinanceManager manager;
+    int choice;
+    double amount;
+    string category, date;
+    string filename = "transactions_encrypted.txt";
+
+    cout << "Welcome to Advanced Personal Finance Manager!" << endl;
+
+    do {
+        cout << "\nChoose an option:\n"
+             << "1. Set Budget Limit\n"
+             << "2. Add Transaction\n"
+             << "3. Undo Last Transaction\n"
+             << "4. View Expense Summary\n"
+             << "5. Display Sorted Transactions\n"
+             << "6. Display Alerts\n"
+             << "7. Save Transactions\n"
+             << "8. Load Transactions\n"
+             << "9. Exit\n";
+        cout << "Enter your choice: ";
+        cin >> choice;
+
+        if (cin.fail()) {
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            cout << "Invalid input. Please enter a number.\n";
+            continue;
+        }
+
+        switch (choice) {
+            case 1:
+                cout << "Enter your budget limit: $";
+                cin >> amount;
+                manager.setBudgetLimit(amount);
+                break;
+            case 2:
+                cout << "Enter category: ";
+                cin >> category;
+                cout << "Enter amount: $";
+                cin >> amount;
+                cout << "Enter date (YYYY-MM-DD): ";
+                cin >> date;
+                manager.addTransaction(category, amount, date);
+                break;
+            case 3:
+                manager.undoTransaction();
+                break;
+            case 4:
+                manager.viewSummary();
+                break;
+            case 5:
+                manager.displaySortedTransactions();
+                break;
+            case 6:
+                manager.displayAlerts();
+                break;
+            case 7:
+                manager.saveToFile(filename);
+                break;
+            case 8:
+                manager.loadFromFile(filename);
+                break;
+            case 9:
+                cout << "Exiting the program. Goodbye!" << endl;
+                break;
+            default:
+                cout << "Invalid choice. Please try again." << endl;
+                break;
+        }
+    } while (choice != 9);
+
+    return 0;
+}
+
